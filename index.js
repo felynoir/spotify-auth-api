@@ -8,7 +8,7 @@ var cookieParser = require("cookie-parser");
 var client_id = process.env.CLIENT_ID; // Your client id
 var client_secret = process.env.CLIENT_SECRET; // Your secret
 var redirect_uri = process.env.REDIRECT_URI; // Your redirect uri
-
+var redirect_frontend_uri = process.env.REDIRECT_FRONTEND_URI;
 /**
  * Generates a random string containing numbers and letters
  * @param  {number} length The length of the string
@@ -29,27 +29,30 @@ var stateKey = "spotify_auth_state";
 
 var app = express();
 
-app
-  .use(express.static(__dirname + "/public"))
-  .use(cors())
-  .use(cookieParser());
+app.use(express.static(__dirname + "/public")).use(cookieParser());
+
+app.use(function (req, res, next) {
+  res.header("Access-Control-Allow-Credentials", true);
+  res.header("Access-Control-Allow-Origin", req.headers.origin);
+  next();
+});
 
 app.get("/login", function (req, res) {
   var state = generateRandomString(16);
   res.cookie(stateKey, state);
-
-  // your application requests authorization
-  var scope = "user-read-private user-read-email";
-  res.redirect(
-    "https://accounts.spotify.com/authorize?" +
+  console.log("login", state);
+  var scope = "streaming user-read-private user-read-email";
+  res.send({
+    location:
+      "https://accounts.spotify.com/authorize?" +
       querystring.stringify({
         response_type: "code",
         client_id: client_id,
         scope: scope,
         redirect_uri: redirect_uri,
         state: state,
-      })
-  );
+      }),
+  });
 });
 
 app.get("/callback", function (req, res) {
@@ -62,7 +65,8 @@ app.get("/callback", function (req, res) {
 
   if (state === null || state !== storedState) {
     res.redirect(
-      "/#" +
+      redirect_frontend_uri +
+        "?" +
         querystring.stringify({
           error: "state_mismatch",
         })
@@ -87,7 +91,8 @@ app.get("/callback", function (req, res) {
     request.post(authOptions, function (error, response, body) {
       if (!error && response.statusCode === 200) {
         var access_token = body.access_token,
-          refresh_token = body.refresh_token;
+          refresh_token = body.refresh_token,
+          expires_in = body.expires_in;
 
         var options = {
           url: "https://api.spotify.com/v1/me",
@@ -95,22 +100,26 @@ app.get("/callback", function (req, res) {
           json: true,
         };
 
-        // use the access token to access the Spotify Web API
-        request.get(options, function (error, response, body) {
-          console.log(body);
-        });
-
-        // we can also pass the token to the browser to make requests from there
+        // new Date with expired
+        console.log(
+          new Date(new Date().getTime() + 1000 * expires_in),
+          expires_in
+        );
         res.redirect(
-          "/#" +
+          redirect_frontend_uri +
+            "?" +
             querystring.stringify({
               access_token: access_token,
               refresh_token: refresh_token,
+              expires_in: new Date(
+                new Date().getTime() + 1000 * expires_in
+              ).toISOString(),
             })
         );
       } else {
         res.redirect(
-          "/#" +
+          redirect_frontend_uri +
+            "?" +
             querystring.stringify({
               error: "invalid_token",
             })
@@ -139,6 +148,7 @@ app.get("/refresh_token", function (req, res) {
 
   request.post(authOptions, function (error, response, body) {
     if (!error && response.statusCode === 200) {
+      console.log("refresh_body", body);
       var access_token = body.access_token;
       res.send({
         access_token: access_token,
