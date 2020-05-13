@@ -27,6 +27,9 @@ var generateRandomString = function (length) {
 
 var stateKey = "spotify_auth_state";
 
+const createExpired = (expires_in) =>
+  new Date(new Date().getTime() + 1000 * expires_in).toISOString();
+
 var app = express();
 
 app.use(express.static(__dirname + "/public")).use(cookieParser());
@@ -100,20 +103,13 @@ app.get("/callback", function (req, res) {
           json: true,
         };
 
-        // new Date with expired
-        console.log(
-          new Date(new Date().getTime() + 1000 * expires_in),
-          expires_in
-        );
         res.redirect(
           redirect_frontend_uri +
             "?" +
             querystring.stringify({
               access_token: access_token,
               refresh_token: refresh_token,
-              expires_in: new Date(
-                new Date().getTime() + 1000 * expires_in
-              ).toISOString(),
+              expires_in: createExpired(expires_in),
             })
         );
       } else {
@@ -132,6 +128,7 @@ app.get("/callback", function (req, res) {
 app.get("/refresh_token", function (req, res) {
   // requesting access token from refresh token
   var refresh_token = req.query.refresh_token;
+  console.log("refresh", refresh_token);
   var authOptions = {
     url: "https://accounts.spotify.com/api/token",
     headers: {
@@ -148,10 +145,10 @@ app.get("/refresh_token", function (req, res) {
 
   request.post(authOptions, function (error, response, body) {
     if (!error && response.statusCode === 200) {
-      console.log("refresh_body", body);
-      var access_token = body.access_token;
+      const { access_token, expires_in } = body;
       res.send({
         access_token: access_token,
+        expires_in: createExpired(expires_in),
       });
     }
   });
