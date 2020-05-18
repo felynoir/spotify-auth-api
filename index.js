@@ -41,6 +41,10 @@ app.use(function (req, res, next) {
   next();
 });
 
+app.get("/", (req, res) => {
+  res.send("hello world");
+});
+
 app.get("/login", function (req, res) {
   var state = generateRandomString(16);
   res.cookie(stateKey, state);
